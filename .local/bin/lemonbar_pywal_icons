@@ -1,0 +1,357 @@
+#!/usr/bin/bash
+# shmalebx9, lemonbar unified config
+# simple bar setup was modified and simplified from fsfg's config
+# This bar combines panel colours, information sourcing, and parsing into one
+# unified config.
+
+# Architecture:
+# 1 define colours and basic bar configuration
+# 2 manage the fifo where bar info is stored
+# 3 gather the info to display in the bar
+# 4 parse info from 3 into lemonbar syntax
+# 5 nitiate lemonbar with configuration and parsed info
+# 6 Use acpi (requires acpid) to listen for changes
+# Icons from nerd fonts:             
+
+
+# Kill Panel if already running. Can also run this whenever wm reloads.
+pgrep -x lemonbar_pywal_icons >/dev/null && killall lemonbar_pywal_icons
+pgrep -x lemonbar >/dev/null && killall lemonbar
+
+# Sources colors from pywal
+. "${HOME}/.cache/wal/colors.sh"
+
+#colors
+FG_PANEL="$color0" 						# Panel's text colour
+BG_PANEL="$color8"						# Panel's background colour
+#COLOR_MONITOR_FG="#8dbcdf"
+#COLOR_MONITOR_BG="#333232"
+#COLOR_FOCUSED_MONITOR_FG="#b1d0e8"
+#COLOR_FOCUSED_MONITOR_BG="#144b6c"
+COLOR_FREE_FG="#737171"
+COLOR_FREE_BG="#333232"
+COLOR_FOCUSED_FREE_FG="$color14"
+COLOR_FOCUSED_FREE_BG="#504e4e"
+COLOR_OCCUPIED_FG="#a7a5a5"
+COLOR_OCCUPIED_BG="#333232"
+COLOR_FOCUSED_OCCUPIED_FG="$color14"
+COLOR_FOCUSED_OCCUPIED_BG="$color0"
+COLOR_URGENT_FG="#f15d66"
+COLOR_URGENT_BG="#333232"
+COLOR_FOCUSED_URGENT_FG="$color14"
+COLOR_FOCUSED_URGENT_BG="#d5443e"
+COLOR_STATE_FG="#89b09c"
+COLOR_STATE_BG="#333232"
+COLOR_TITLE_FG="#a8a2c0"
+COLOR_TITLE_BG="#333232"
+COLOR_UNDERLINE="$color6"
+FONT="Terminus:size=12"
+
+# [ICONS]
+
+# Icon font
+ICONS="customicons2:size=12"
+
+# Volume
+VOLON=""
+VOLMUTE=""
+
+# Battery
+BATNORMAL=""
+BATCHARGE=""
+BATLOW=""
+
+# Date/Time
+DATE=""
+TIME=""
+
+# Ram
+RAM=""
+
+# CPU
+CPU=""
+
+# Wifi
+WIFION=""
+WIFIOFF=""
+
+# Intervals, how often to fetch info for bar
+RAM_INT="10"
+CPU_INT="2"		# CPU interval must be non-zero for the function to work
+WIFI_INT="10"
+BAT_INT="50"
+
+
+### Geometry
+readonly PANEL_WIDTH=1620
+readonly PANEL_HEIGHT=25
+readonly PANEL_X=150		#panel offset to the right
+readonly PANEL_Y=3			#panel offset down
+GEOMETRY="$PANEL_WIDTH"x"$PANEL_HEIGHT"+"$PANEL_X"+"$PANEL_Y"
+
+#FIFO
+PANEL_FIFO="${PANEL_FIFO:=/tmp/panel-fifo}"
+[ -e "$PANEL_FIFO" ] && rm "$PANEL_FIFO"
+mkfifo "$PANEL_FIFO"
+
+# Clock and date
+#clock -sf 'S | %a %b %e | %I:%M | ' > "$PANEL_FIFO" &
+while true;  do date "+S $DATE %a %b %d | $TIME %I:%M %p" > "$PANEL_FIFO" ; sleep 1; done &
+
+# Bspwm info for workspaces
+bspc subscribe report > "$PANEL_FIFO" &
+
+#CPU
+Cpu(){
+	while true ; do
+	 awk '{u=$2+$4; t=$2+$4+$5; if (NR==1){u1=u; t1=t;} else print ($2+$4-u1) * 100 / (t-t1); }' <(grep 'cpu ' /proc/stat) <(sleep "$CPU_INT" ;grep 'cpu ' /proc/stat) | awk '{print "P  '$CPU' " int($1+0.5) "% "}'
+	done
+}
+Cpu > "$PANEL_FIFO" &
+
+
+
+# Sound
+# This function is not looped. This functions evaluates the correct alsa volume on first
+# run. This function is mirrored in a separate script. The separate script echoes the
+# same information to the panel fifo when volume is changed via volume keys in sxhkd.
+
+Sound(){
+	NOTMUTED=$( amixer sget Master | grep "\[on\]" )
+	VOL=$( amixer sget Master | awk -F ' ' 'NR == 5 {print substr($4, 2, 3)}' )
+	if [[ ! -z $NOTMUTED ]]
+		then
+			echo "V $VOLON $VOL "
+	else
+		echo "V $VOLMUTE"
+	fi
+}
+Sound > "$PANEL_FIFO" &
+
+#Wifi
+Wifi(){
+while true ; do
+	WIFISTR=$( iwconfig wlp3s0 | awk -F' ' 'NR == 6 {gsub("Quality=",""); gsub("/70",""); print $2}' )
+	ESSID=$(iwconfig wlp3s0 | awk -F' ' 'NR == 1 {gsub("ESSID:\"","");gsub("\"",""); print $4}')
+	if [ "$ESSID" = "ESSID:off/any" ]
+		then
+			echo "B%{F#ff4444} $WIFIOFF"
+			if [ "$WNOT" = "FALSE" ] ; then
+				notify-send "Warning: Wifi Disconnected" && WNOT="TRUE"
+			fi
+	else
+			echo "A $WIFION ${ESSID} ${WIFISTR} " && WNOT="FALSE"
+	fi
+	sleep "$WIFI_INT"
+done
+}
+Wifi > "$PANEL_FIFO" &
+
+#Battery
+Battery() {
+while true ; do
+	CHARGING=$(cat /sys/class/power_supply/BAT1/status)
+	BATPERC=$(cat /sys/class/power_supply/BAT1/capacity)
+	if [ "$CHARGING" != "Discharging" ] ; then
+		echo "D $BATCHARGE $BATPERC%"
+	elif [ "$BATPERC" -lt 10 ] ; then
+		echo "C $BATLOW $BATPERC% " && 
+		if [ "$BNOT" = "FALSE" ] ; then
+			notify-send "Warning: Battery low" && BNOT="TRUE"
+		fi
+	else
+		echo "D $BATNORMAL $BATPERC% " && BNOT="FALSE"
+	fi
+sleep "$BAT_INT"
+done
+}
+Battery > "$PANEL_FIFO" &
+
+# Ram Usage, this is the low estimate, caches and buffers are not counted
+Ram() {
+while true ; do
+	free -m | awk -F' ' 'NR==2 {print "R '$RAM' " $3 " MB "}'
+sleep "$RAM_INT"
+done
+}
+Ram > "$PANEL_FIFO" &
+
+
+# Parse
+bar() {
+while read -r line ; do
+	case $line in
+		S*)
+			# clock output
+			sys="${line#?} %{B-}%{F-}"
+			;;
+		D*)
+			# Battery
+			bat="${line#?} %{B-}%{F-}"
+			;;			
+		C*)
+			# Battery
+			bat="${line#?} %{B-}%{F-}"
+			;;	
+		V*)
+			# Volume
+			vol="${line#?} %{B-}%{F-}"
+			;;					
+		A*)
+			# Wifi
+			wifi="${line#?} %{B-}%{F-}"
+			;;	
+		B*)
+			# Wifi
+			wifi="${line#?} %{B-}%{F-}"
+			;;	
+		R*)
+			#RAM
+			ram="${line#?} %{B-}%{F-}"
+			;;
+		P*)
+			#CPU
+			cpu="${line#?} %{B-}%{F-}"
+			;;
+		W*)
+			# bspwm's state
+			wm=
+			IFS=':'
+			set -- ${line#?}
+			while [ $# -gt 0 ] ; do
+				item=$1
+				name=${item#?}
+				case $item in
+					[mM]*)
+						case $item in
+							m*)
+								# monitor
+								FG=$COLOR_MONITOR_FG
+								BG=$COLOR_MONITOR_BG
+								on_focused_monitor=
+								;;
+							M*)
+								# focused monitor
+								FG=$COLOR_FOCUSED_MONITOR_FG
+								BG=$COLOR_FOCUSED_MONITOR_BG
+								on_focused_monitor=1
+								;;
+						esac
+						# The following marks monitors for multi-monitor setup
+						#[ $num_mon -lt 2 ] && shift && continue
+						#wm="${wm}%{F${FG}}%{B${BG}}%{A:bspc monitor -f ${name}:} ${name} %{A}%{B-}%{F-}"
+						;;
+					[fFoOuU]*)
+					# commented-out lines from here to line 230 are for multi-monitor setup.
+					# the if-tests are needless for a single-monitor configuration.
+						case $item in
+							f*)
+								# free desktop
+								FG=$COLOR_FREE_FG
+								BG=$COLOR_FREE_BG
+								UL=$BG
+								;;
+							F*)
+					#			if [ "$on_focused_monitor" ] ; then
+									# focused free desktop
+									FG=$COLOR_FOCUSED_FREE_FG
+									BG=$COLOR_FOCUSED_FREE_BG
+									UL=$COLOR_UNDERLINE
+					#			else
+					#				# active free desktop
+					#				FG=$COLOR_FREE_FG
+					#				BG=$COLOR_FREE_BG
+					#				UL=$COLOR_FOCUSED_FREE_BG
+					#			fi
+								;;
+							o*)
+								# occupied desktop
+								FG=$COLOR_OCCUPIED_FG
+								BG=$COLOR_OCCUPIED_BG
+								UL=$COLOR_UNDERLINE
+								;;
+							O*)
+					#			if [ "$on_focused_monitor" ] ; then
+									# focused occupied desktop
+									FG=$COLOR_FOCUSED_OCCUPIED_FG
+									BG=$COLOR_FOCUSED_OCCUPIED_BG
+									UL=$COLOR_UNDERLINE
+					#			else
+					#				# active occupied desktop
+					#				FG=$COLOR_OCCUPIED_FG
+					#				BG=$COLOR_OCCUPIED_BG
+					#				UL=$COLOR_FOCUSED_OCCUPIED_BG
+					#			fi
+								;;
+							u*)
+								# urgent desktop
+								FG=$COLOR_URGENT_FG
+								BG=$COLOR_URGENT_BG
+								UL=$BG
+								;;
+							U*)
+					#			if [ "$on_focused_monitor" ] ; then
+									# focused urgent desktop
+									FG=$COLOR_FOCUSED_URGENT_FG
+									BG=$COLOR_FOCUSED_URGENT_BG
+									UL=$BG
+					#			else
+					#				# active urgent desktop
+					#				FG=$COLOR_URGENT_FG
+					#				BG=$COLOR_URGENT_BG
+					#				UL=$COLOR_FOCUSED_URGENT_BG
+					#			fi
+								;;
+						esac
+						wm="${wm}%{F${FG}}%{B${BG}}%{U${UL}}%{+u}%{A:bspc desktop -f ${name}:} ${name} %{A}%{B-}%{F-}%{-u}"
+						;;
+				esac
+				shift
+			done
+			;;
+	esac
+	printf "%s\n" "%{l}${wm}%{c}%{B$color11}${sys}%{r}%{B$color1}${bat}%{B$color2}${vol}%{B$color6}${ram}%{B$color4}${cpu}%{B$color5}${wifi}"
+done
+}
+
+bar < "$PANEL_FIFO" \
+	| lemonbar -p -a 32 -u 2 -n "$PANEL_WM_NAME" \
+		-B "$BG_PANEL" \
+		-F "$FG_PANEL" \
+		-f "$FONT" -f "$ICONS" \
+		-g "$GEOMETRY" &
+
+# The following function parses the output of `acpi_listen` to update the volume/battery
+# when volume buttons are pressed or battery is plugged in (on laptop)
+
+Acpiparse() {
+while read -r line ; do
+	case $line in
+		ac_adapter*)
+			case $line in
+			*00000000) echo "bat disconnected"
+			BATPERC=$(cat /sys/class/power_supply/BAT1/capacity)
+			echo "D $BATNORMAL $BATPERC%" > "$PANEL_FIFO"
+			;;
+			*00000001) echo "bat connected"
+			BATPERC=$(cat /sys/class/power_supply/BAT1/capacity)
+			echo "D $BATCHARGE $BATPERC% "  > "$PANEL_FIFO"
+			;;
+			esac
+			;;
+		button/mute*)
+			VOL=$( amixer sget Master | awk -F ' ' 'NR == 5 {print substr($4, 2, 3)}' )
+			if [[ $(amixer sget Master | grep "\[on\]") ]]; then
+				echo "V $VOLMUTE" > "$PANEL_FIFO"
+			else
+				echo "V $VOLON $VOL" > "$PANEL_FIFO"
+			fi
+			;;
+		button/volume*)
+			VOL=$( amixer sget Master | awk -F ' ' 'NR == 5 {print substr($4, 2, 3)}' )
+			echo "V $VOLON $VOL" > "$PANEL_FIFO"
+	esac
+done
+}
+
+Acpiparse < <(acpi_listen)

@@ -1,0 +1,4 @@
+xset -b
+exec bspwm
+
+

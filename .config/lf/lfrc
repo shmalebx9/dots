@@ -1,0 +1,37 @@
+# Basic vars
+set shell sh
+set previewer ~/.config/lf/scope
+set shellopts '-eu'
+set ifs "\n"
+set scrolloff 10
+set color256 on
+set icons
+
+# cmds/functions
+cmd open ${{
+    case $(file --mime-type $f -b) in
+    	text/troff) man ./ $f;;
+        text/*) $EDITOR $fx;;
+	image/x-xcf|image/svg+xml) setsid gimp $f >/dev/null 2>&1 & ;;
+	image/*) setsid sxiv -b $f >/dev/null 2>&1 & ;;
+	application/vnd.openxmlformats-officedocument.wordprocessingml.document) setsid wps $f >/dev/null 2>&1 & ;;
+	audio/*) mpv --input-ipc-server=/tmp/mpvsoc$(date +%%s) $f ;;
+	video/*) setsid mpv --input-ipc-server=/tmp/mpvsoc$(date +%%s) $f -quiet >/dev/null 2>&1 & ;;
+	application/pdf) setsid zathura $fx >/dev/null 2>&1 & ;;
+	application/*presentation) setsid wpp $fx > /dev/null 2>&1 & ;;
+        *) for f in $fx; do setsid $OPENER $f >/dev/null 2>&1 & done;;
+    esac
+}}
+
+cmd rename %[ -e $1 ] && printf "file exists" || mv $f $1
+
+cmd delete ${{
+	set -f
+	printf "%s\n\t" "$fx"
+	printf "delete?[y/N]"
+	read ans
+	[ $ans = "y" ] && rm -rf $fx
+}}
+
+# Bindings
+map D delete

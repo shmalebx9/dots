@@ -1,0 +1,69 @@
+font:
+  normal:
+    family: Hack Nerd Font
+    style: Regular
+
+  bold:
+    family: Hack Nerd Font
+    style: Bold
+
+  italic:
+    family: Hack Nerd Font
+    style: Italic
+
+  bold_italic:
+    family: Hack Nerd Font
+    style: Bold Italic
+
+  # Point size of the font
+  size: 7.5    
+
+
+
+key_bindings:
+    - { key: V, mods: Control, action: Paste }
+    - { key: C, mods: Control, action: Copy }
+    - { key: O, mods: Control|Shift, chars: "\e[25~" }
+    - { key: D, mods: Control|Shift, chars: "\e[26~" }
+    - { key: V, mods: Control|Shift, chars: "\e[27~" }
+    - { key: P, mods: Control|Shift, chars: "\e[28~" }
+    - { key: G, mods: Control|Shift, chars: "\e[29~" }
+
+    - { key: S, mods: Control, action: ReceiveChar  }
+    - { key: W, mods: Control|Shift, chars: "\e[30~" }
+
+#opacity
+
+window:
+ padding:
+    x: 8
+    y: 8
+
+
+# BEGIN ACE
+colors:
+  primary:
+    background: '0x293345'
+    foreground: '0x9b999e'
+  cursor:
+    text:       '0x293345'
+    cursor:     '0x9b999e'
+  normal:
+    black:      '0x293345'
+    red:        '0xfe6d32'
+    green:      '0x6ba86d'
+    yellow:     '0xaf9a0a'
+    blue:       '0x679ed7'
+    magenta:    '0xbc8ab6'
+    cyan:       '0x6ea590'
+    white:      '0x9b999e'
+  bright:
+    black:      '0xa39799'
+    red:        '0xdf8251'
+    green:      '0x7aa747'
+    yellow:     '0xba953a'
+    blue:       '0x3ba1e8'
+    magenta:    '0xc97ed7'
+    cyan:       '0x52a6b1'
+    white:      '0x9b999e'
+# END ACE

@@ -1,0 +1,25 @@
+#!/bin/bash
+
+pid=$(pgrep xinit)
+pid=$(pgrep -P $pid -n)
+
+import_environment() {
+        (( pid )) && for var; do
+                IFS='=' read key val < <(egrep -z "$var" /proc/$pid/environ)
+
+                printf -v "$key" %s "$val"
+                [[ ${!key} ]] && export "$key"
+        done
+}
+
+import_environment XAUTHORITY USER DISPLAY
+USER_HOME="/home/$USER"
+
+echo "$USER_HOME"
+echo "$XAUTHORITY"
+echo "$USER"
+echo "$DISPLAY"
+echo "$USER_HOME"
+
+cd "$USER_HOME"
+runuser $USER -c 'betterlockscreen -l blur' || betterlockscreen -l blur

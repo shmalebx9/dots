@@ -1,0 +1,13 @@
+#! /bin/bash
+
+Sound(){
+	NOTMUTED=$( amixer sget Master | grep "\[on\]" )
+	VOL=$( amixer sget Master | awk -F ' ' 'NR == 5 {gsub("]",""); print substr($4, 2, 3)}' )
+	if [[ ! -z $NOTMUTED ]]
+		then
+			echo "V  $VOL"
+	else
+		echo "V   "
+	fi
+}
+Sound > /tmp/panel-fifo

@@ -1,0 +1,9 @@
+killall dunst lemonbar lemon_pywal_icons
+setxkbmap dvorak -option caps:escape
+xset -b 
+
+
+bspc wm -r 
+setsid dunst -conf ~/.dunst/dunstrc &
+sleep 1
+notify-send "BSPWM restarted"
